@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: harbor-{{ORX_RUN}}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    job-name: harbor-{{ORX_RUN}}
+  ports:
+    - name: ray-gcs
+      port: 6379
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: harbor-{{ORX_RUN}}
+spec:
+  completions: 2
+  parallelism: 2
+  completionMode: Indexed
+  template:
+    spec:
+      restartPolicy: Never
+      subdomain: harbor-{{ORX_RUN}}
+      containers:
+        - name: run
+          image: pytorch/pytorch:2.8.0-cuda12.8-cudnn9-devel
+          command: ["bash", "-c", "$ORX_SCRIPT"]
+          env:
+            # Indexed-Job pod 0's stable DNS name: <job>-<index>.<subdomain>
+            - name: RAY_HEAD_HOST
+              value: harbor-{{ORX_RUN}}-0.harbor-{{ORX_RUN}}
+          resources:
+            requests:
+              nvidia.com/gpu: "8"
+              cpu: "100"
+              memory: "800Gi"
+            limits:
+              nvidia.com/gpu: "8"
+              memory: "960Gi"
+          volumeMounts:
+            - name: shm
+              mountPath: /dev/shm
+            - name: local-storage
+              mountPath: /mnt/local_storage
+      volumes:
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 128Gi
+        - name: local-storage
+          emptyDir: {}
